@@ -1,0 +1,7 @@
+[project]
+name = "cpcb-aqi-dashboard"
+
+[deploy]
+startCommand = "uvicorn app:app --host 0.0.0.0 --port $PORT --workers 2"
+healthcheckPath = "/"
+restartPolicyType = "on-failure"

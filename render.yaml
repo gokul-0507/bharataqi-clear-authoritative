@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: cpcb-aqi-dashboard
+    runtime: python
+    region: singapore          # closest to India
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: AQICN_TOKEN
+        sync: false            # set manually in Render dashboard
+      - key: OPENWEATHER_KEY
+        sync: false
+    healthCheckPath: /api/aqi/advice?city=Delhi
+    autoDeploy: true

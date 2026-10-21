@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+  aqi-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: cpcb-aqi-dashboard:latest
+    container_name: cpcb_aqi_backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - AQICN_TOKEN=${AQICN_TOKEN}
+      - OPENWEATHER_KEY=${OPENWEATHER_KEY}
+    env_file:
+      - .env                    # local .env file (not committed to git)
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    volumes:
+      - model_data:/app         # persist aqi_model.pkl between restarts
+
+  # Optional: Nginx reverse proxy for production TLS termination
+  nginx:
+    image: nginx:alpine
+    container_name: cpcb_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      aqi-backend:
+        condition: service_healthy
+    profiles:
+      - production               # only activated with: docker compose --profile production up
+
+volumes:
+  model_data:

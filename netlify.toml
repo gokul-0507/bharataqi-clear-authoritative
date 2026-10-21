@@ -1,0 +1,20 @@
+[build]
+  publish = "."
+  command = "echo 'Static build – no build step needed'"
+
+[functions]
+  # Netlify Functions would be needed for a real serverless API;
+  # for a Python FastAPI backend, deploy to Render/Railway instead.
+
+[[redirects]]
+  from = "/api/*"
+  to   = "http://localhost:8000/api/:splat"   # dev proxy only
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options        = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy        = "strict-origin-when-cross-origin"
+    Content-Security-Policy = "default-src 'self' https: data: 'unsafe-inline' 'unsafe-eval'"

@@ -1,0 +1,16 @@
+# .gitignore – CPCB AQI Dashboard
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv/
+venv/
+*.pkl          # ML models (too large for git; use git-lfs or a model registry)
+*.log
+.DS_Store
+*.egg-info/
+dist/
+build/
+node_modules/
+.vercel/
+.netlify/

@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CPCB AQI Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <!-- Lucide icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background: #f0f4f8; }
+        .glass {
+            background: rgba(255,255,255,0.25);
+            backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+        .city-input { width: 100%; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+    <h1 class="text-3xl font-bold mb-4 text-center">CPCB Air Quality Index Dashboard</h1>
+
+    <!-- City selector -->
+    <div class="w-full max-w-md mb-4 relative">
+        <input id="cityInput" class="city-input p-2 rounded glass focus:outline-none" placeholder="Enter Indian city (e.g., Delhi)" autocomplete="off" />
+        <ul id="suggestions" class="mt-1 max-h-48 overflow-y-auto bg-white rounded shadow hidden absolute z-10 w-full"></ul>
+    </div>
+
+    <!-- AQI Card -->
+    <div id="aqiCard" class="glass p-6 w-full max-w-md flex flex-col items-center mb-4">
+        <div id="aqiValue" class="text-4xl font-semibold mb-1">--</div>
+        <div id="aqiCategory" class="text-lg font-medium"></div>
+    </div>
+
+    <!-- Pollutant sub‑index grid -->
+    <div id="pollutantGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-xl mb-4"></div>
+
+    <!-- Prediction chart -->
+    <canvas id="aqiChart" class="glass p-4 w-full max-w-2xl"></canvas>
+
+    <!-- Health advice -->
+    <div id="advice" class="glass p-4 mt-4 w-full max-w-xl text-center"></div>
+
+    <script>
+        const CITIES = ["Delhi", "Mumbai", "Bengaluru", "Chennai", "Kolkata", "Hyderabad", "Ahmedabad", "Pune", "Lucknow", "Nagpur", "Jaipur", "Surat"];
+        const cityInput = document.getElementById('cityInput');
+        const suggestions = document.getElementById('suggestions');
+        const aqiValueEl = document.getElementById('aqiValue');
+        const aqiCategoryEl = document.getElementById('aqiCategory');
+        const pollutantGrid = document.getElementById('pollutantGrid');
+        const adviceEl = document.getElementById('advice');
+        const chartCanvas = document.getElementById('aqiChart');
+        let aqiChart = null;
+        let currentAbortController = null;
+
+        // ---------- Autocomplete ----------
+        cityInput.addEventListener('input', () => {
+            const query = cityInput.value.trim().toLowerCase();
+            if (!query) { suggestions.classList.add('hidden'); return; }
+            const matches = CITIES.filter(c => c.toLowerCase().includes(query));
+            suggestions.innerHTML = '';
+            if (matches.length) {
+                matches.forEach(m => {
+                    const li = document.createElement('li');
+                    li.textContent = m;
+                    li.className = 'p-2 hover:bg-gray-200 cursor-pointer';
+                    li.onclick = () => { selectCity(m); };
+                    suggestions.appendChild(li);
+                });
+                suggestions.classList.remove('hidden');
+            } else {
+                suggestions.classList.add('hidden');
+            }
+        });
+
+        function selectCity(name) {
+            cityInput.value = name;
+            suggestions.classList.add('hidden');
+            fetchAll(name);
+        }
+
+        // ---------- Fetch helpers with abort support ----------
+        async function fetchJson(url) {
+            if (currentAbortController) currentAbortController.abort();
+            currentAbortController = new AbortController();
+            const resp = await fetch(url, { signal: currentAbortController.signal });
+            if (!resp.ok) throw new Error(`Failed ${url}: ${resp.status}`);
+            return await resp.json();
+        }
+
+        async function fetchAll(city) {
+            try {
+                const [current, predict, advice] = await Promise.all([
+                    fetchJson(`/api/aqi/current?city=${encodeURIComponent(city)}`),
+                    fetchJson(`/api/aqi/predict?city=${encodeURIComponent(city)}`),
+                    fetchJson(`/api/aqi/advice?city=${encodeURIComponent(city)}`),
+                ]);
+                renderCurrent(current);
+                renderChart(current, predict);
+                adviceEl.textContent = advice.advice;
+            } catch (e) {
+                console.error(e);
+                alert(e.message);
+            }
+        }
+
+        // ---------- Render current AQI ----------
+        function renderCurrent(data) {
+            const { aqi, details } = data;
+            const catInfo = getCategoryInfo(aqi);
+            aqiValueEl.textContent = aqi;
+            aqiCategoryEl.textContent = catInfo.name;
+            aqiCategoryEl.style.color = catInfo.color;
+            // pollutant cards
+            pollutantGrid.innerHTML = '';
+            details.forEach(d => {
+                const card = document.createElement('div');
+                card.className = 'glass p-3 rounded text-center';
+                card.innerHTML = `<strong>${d.pollutant.toUpperCase()}</strong><br/>${d.concentration} → ${d.sub_index}<br/><span style='color:${d.color}'>${d.category}</span>`;
+                pollutantGrid.appendChild(card);
+            });
+        }
+
+        // ---------- Render chart ----------
+        function renderChart(currentData, predictData) {
+            // Build mock 24‑h history from current AQI for demo purposes
+            const hist = Array.from({length:24}, (_,i)=> Math.max(0, currentData.aqi - (i%5)));
+            const labels = hist.map((_,i)=> `-${24-i}h`).reverse();
+            labels.push('+24h');
+            const datasets = [
+                {
+                    label: 'Historical AQI',
+                    data: hist.reverse(),
+                    borderColor: '#3b82f6',
+                    tension: 0.2,
+                    fill: false,
+                },
+                {
+                    label: 'Predicted AQI (next 24h)',
+                    data: new Array(24).fill(null).concat([predictData.predicted_aqi]),
+                    borderColor: '#ef4444',
+                    borderDash: [5,5],
+                    tension: 0.2,
+                    fill: false,
+                }
+            ];
+            if (aqiChart) aqiChart.destroy();
+            aqiChart = new Chart(chartCanvas.getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'top' } },
+                    scales: {
+                        y: { suggestedMin: 0, suggestedMax: 500 }
+                    }
+                }
+            });
+        }
+
+        function getCategoryInfo(aqi) {
+            const cat = [
+                {lo:0, hi:50, name:'Good', color:'#009966'},
+                {lo:51, hi:100, name:'Satisfactory', color:'#70c1b3'},
+                {lo:101, hi:200, name:'Moderate', color:'#ffde33'},
+                {lo:201, hi:300, name:'Poor', color:'#ff9933'},
+                {lo:301, hi:400, name:'Very Poor', color:'#cc0033'},
+                {lo:401, hi:500, name:'Severe', color:'#660099'},
+            ];
+            return cat.find(c=> aqi>=c.lo && aqi<=c.hi) || cat[cat.length-1];
+        }
+
+        // ---------- Initial load (fallback sample) ----------
+        window.addEventListener('load', () => {
+            const sampleCity = 'Delhi';
+            cityInput.value = sampleCity;
+            // Use static sample data to avoid a backend requirement
+            const sampleCurrent = {
+                aqi: 135,
+                details: [
+                    {pollutant:'pm2_5', concentration:85, sub_index:115, category:'Moderate', color:'#ffde33'},
+                    {pollutant:'pm10', concentration:140, sub_index:130, category:'Moderate', color:'#ffde33'},
+                    {pollutant:'no2', concentration:50, sub_index:70, category:'Satisfactory', color:'#70c1b3'},
+                ]
+            };
+            renderCurrent(sampleCurrent);
+            const hist = [120,125,130,128,135,132,130,129,131,134,137,138,136,133,130,128,127,126,124,122,120,118,115,112];
+            renderChart(sampleCurrent, {predicted_aqi:140});
+            adviceEl.textContent = "Sensitive groups may experience health effects. Reduce prolonged outdoor exertion.";
+        });
+    </script>
+</body>
+</html>
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CPCB AQI Dashboard</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        body { background: #f0f4f8; }
+        .glass {
+            background: rgba(255,255,255,0.25);
+            backdrop-filter: blur(10px);
+            border-radius: 1rem;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+    <h1 class="text-3xl font-bold mb-6">CPCB Air Quality Index Dashboard</h1>
+
+    <!-- City selector -->
+    <div class="mb-4 w-full max-w-md">
+        <input id="cityInput" type="text" placeholder="Enter Indian city (e.g., Delhi)" class="w-full p-2 rounded glass focus:outline-none" autocomplete="off" />
+        <ul id="suggestions" class="mt-1 max-h-48 overflow-y-auto bg-white rounded shadow hidden"></ul>
+    </div>
+
+    <!-- AQI gauge -->
+    <div id="aqiCard" class="glass p-6 w-full max-w-md flex flex-col items-center">
+        <div class="text-2xl font-semibold mb-2" id="aqiValue">--</div>
+        <div id="aqiCategory" class="text-lg font-medium"></div>
+    </div>
+
+    <!-- Pollutant sub‑index cards -->
+    <div id="pollutantGrid" class="grid grid-cols-2 gap-4 mt-6 w-full max-w-xl"></div>
+
+    <!-- Prediction chart -->
+    <canvas id="aqiChart" class="mt-8 w-full max-w-2xl glass p-4"></canvas>
+
+    <!-- Health advice -->
+    <div id="advice" class="glass p-4 mt-6 w-full max-w-xl text-center"></div>
+
+    <script>
+        // Simple static city list – can be expanded or fetched from an endpoint
+        const CITIES = ["Delhi", "Mumbai", "Bengaluru", "Chennai", "Kolkata", "Hyderabad", "Ahmedabad", "Pune", "Lucknow", "Nagpur", "Jaipur", "Surat"];
+
+        const cityInput = document.getElementById('cityInput');
+        const suggestions = document.getElementById('suggestions');
+        const aqiValueEl = document.getElementById('aqiValue');
+        const aqiCategoryEl = document.getElementById('aqiCategory');
+        const pollutantGrid = document.getElementById('pollutantGrid');
+        const adviceEl = document.getElementById('advice');
+        const chartCtx = document.getElementById('aqiChart').getContext('2d');
+        let aqiChart;
+
+        // Autocomplete logic
+        cityInput.addEventListener('input', () => {
+            const query = cityInput.value.toLowerCase();
+            const matches = CITIES.filter(c => c.toLowerCase().includes(query));
+            suggestions.innerHTML = '';
+            if (matches.length && query) {
+                matches.forEach(m => {
+                    const li = document.createElement('li');
+                    li.textContent = m;
+                    li.className = 'p-2 hover:bg-gray-200 cursor-pointer';
+                    li.onclick = () => { cityInput.value = m; suggestions.classList.add('hidden'); fetchAll(m); };
+                    suggestions.appendChild(li);
+                });
+                suggestions.classList.remove('hidden');
+            } else {
+                suggestions.classList.add('hidden');
+            }
+        });
+
+        async function fetchCurrent(city) {
+            const resp = await fetch(`/api/aqi/current?city=${city}`);
+            if (!resp.ok) throw new Error('Failed to load current AQI');
+            return await resp.json();
+        }
+        async function fetchPredict(city) {
+            const resp = await fetch(`/api/aqi/predict?city=${city}`);
+            if (!resp.ok) throw new Error('Failed to load prediction');
+            return await resp.json();
+        }
+        async function fetchAdvice(city) {
+            const resp = await fetch(`/api/aqi/advice?city=${city}`);
+            if (!resp.ok) throw new Error('Failed to load advice');
+            return await resp.json();
+        }
+
+        function renderAQI(data) {
+            const { aqi, details } = data;
+            const categoryInfo = getCategoryInfo(aqi);
+            aqiValueEl.textContent = aqi;
+            aqiCategoryEl.textContent = categoryInfo.name;
+            aqiCategoryEl.style.color = categoryInfo.color;
+            // Populate pollutant cards
+            pollutantGrid.innerHTML = '';
+            details.forEach(d => {
+                const div = document.createElement('div');
+                div.className = 'glass p-3 rounded';
+                div.innerHTML = `<strong>${d.pollutant.toUpperCase()}</strong><br/>${d.concentration} → ${d.sub_index}<br/><span style='color:${d.color}'>${d.category}</span>`;
+                pollutantGrid.appendChild(div);
+            });
+        }
+
+        function renderChart(history, prediction) {
+            const labels = history.map((_, i) => `-${24-i}h`);
+            const dataSet = {
+                label: 'Historical AQI',
+                data: history,
+                borderColor: '#3b82f6',
+                fill: false,
+            };
+            const predSet = {
+                label: 'Predicted AQI (next 24h)',
+                data: new Array(24).fill(null).concat([prediction]),
+                borderColor: '#ef4444',
+                borderDash: [5,5],
+                fill: false,
+            };
+            if (aqiChart) aqiChart.destroy();
+            aqiChart = new Chart(chartCtx, {
+                type: 'line',
+                data: {
+                    labels: labels.concat(['+24h']),
+                    datasets: [dataSet, predSet],
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { position: 'top' } },
+                },
+            });
+        }
+
+        function getCategoryInfo(aqi) {
+            const categories = [
+                {lo:0, hi:50, name:'Good', color:'#009966'},
+                {lo:51, hi:100, name:'Satisfactory', color:'#70c1b3'},
+                {lo:101, hi:200, name:'Moderate', color:'#ffde33'},
+                {lo:201, hi:300, name:'Poor', color:'#ff9933'},
+                {lo:301, hi:400, name:'Very Poor', color:'#cc0033'},
+                {lo:401, hi:500, name:'Severe', color:'#660099'},
+            ];
+            return categories.find(c => aqi >= c.lo && aqi <= c.hi) || categories[categories.length-1];
+        }
+
+        async function fetchAll(city) {
+            try {
+                const [current, predict, advice] = await Promise.all([
+                    fetchCurrent(city),
+                    fetchPredict(city),
+                    fetchAdvice(city),
+                ]);
+                renderAQI(current);
+                // Mock historical data (replace with real time‑series in production)
+                const hist = Array.from({length:24}, (_,i)=> current.aqi - (i%5));
+                renderChart(hist, predict.predicted_aqi);
+                adviceEl.textContent = advice.advice;
+            } catch (e) {
+                console.error(e);
+                alert(e.message);
+            }
+        }
+
+        // Load sample data on first load (Delhi) to show UI without backend
+        window.addEventListener('load', () => {
+            const sampleCity = 'Delhi';
+            cityInput.value = sampleCity;
+            // static fallback data
+            const sampleCurrent = {
+                aqi: 135,
+                details: [
+                    {pollutant:'pm2_5', concentration:85, sub_index:115, category:'Moderate', color:'#ffde33'},
+                    {pollutant:'pm10', concentration:140, sub_index:130, category:'Moderate', color:'#ffde33'},
+                    {pollutant:'no2', concentration:50, sub_index:70, category:'Satisfactory', color:'#70c1b3'},
+                ]
+            };
+            renderAQI(sampleCurrent);
+            const hist = [120,125,130,128,135,132,130,129,131,134,137,138,136,133,130,128,127,126,124,122,120,118,115,112];
+            renderChart(hist, 140);
+            adviceEl.textContent = "Sensitive groups may experience health effects. Reduce prolonged outdoor exertion.";
+        });
+    </script>
+</body>
+</html>

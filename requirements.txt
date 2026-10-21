@@ -1,0 +1,8 @@
+# requirements.txt — CPCB AQI Dashboard (Python 3.13 compatible, pre-built wheels only)
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+httpx==0.27.0
+pandas>=2.0.0          # will resolve to latest wheel available for Python 3.13
+joblib==1.4.2
+python-dotenv==1.0.1
+aiofiles==23.2.1
