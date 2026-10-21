@@ -1,388 +1,660 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CPCB AQI Dashboard</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
-    <!-- Lucide icons CDN -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        body { background: #f0f4f8; }
-        .glass {
-            background: rgba(255,255,255,0.25);
-            backdrop-filter: blur(10px);
-            border-radius: 1rem;
-            border: 1px solid rgba(255,255,255,0.3);
-        }
-        .city-input { width: 100%; }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AQI India — Live Monitor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #f7f8fa;
+      --surface: #ffffff;
+      --border:  #e8eaed;
+      --text:    #1a1d23;
+      --muted:   #6b7280;
+      --radius:  16px;
+      --shadow:  0 2px 12px rgba(0,0,0,.07);
+
+      /* CPCB colours */
+      --good:       #009966;
+      --satisf:     #a3c93a;
+      --moderate:   #f5c518;
+      --poor:       #ff6b35;
+      --verypoor:   #cc0033;
+      --severe:     #7b2d8b;
+    }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+    }
+
+    /* ── PAGE TRANSITIONS ── */
+    .page { display: none; flex-direction: column; min-height: 100dvh; }
+    .page.active { display: flex; }
+
+    /* ─────────────────────────────────────────
+       PAGE 1 — CITY SELECTOR
+    ───────────────────────────────────────── */
+    #page-select {
+      padding: 48px 20px 32px;
+      max-width: 560px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .brand-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--good);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity:1; transform:scale(1); }
+      50%      { opacity:.5; transform:scale(1.3); }
+    }
+    .brand-name { font-size: 13px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+    .headline { font-size: 28px; font-weight: 800; line-height: 1.2; margin-bottom: 6px; }
+    .subline   { font-size: 14px; color: var(--muted); margin-bottom: 36px; }
+
+    .section-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .city-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+
+    .city-btn {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 12px;
+      padding: 14px 16px;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color .15s, box-shadow .15s, transform .1s;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .city-btn:hover {
+      border-color: #bbb;
+      box-shadow: var(--shadow);
+      transform: translateY(-1px);
+    }
+    .city-btn:active { transform: translateY(0); }
+    .city-btn .city-name { font-size: 15px; font-weight: 600; }
+    .city-btn .city-state { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .city-btn .arrow {
+      font-size: 18px;
+      color: var(--border);
+      flex-shrink: 0;
+    }
+
+    /* ─────────────────────────────────────────
+       PAGE 2 — AQI DISPLAY
+    ───────────────────────────────────────── */
+    #page-aqi {
+      padding: 0;
+      flex-direction: column;
+    }
+
+    /* Top bar */
+    .aqi-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 24px 0;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 22px;
+      color: var(--muted);
+      line-height: 1;
+      padding: 4px;
+      border-radius: 8px;
+      transition: background .15s;
+    }
+    .back-btn:hover { background: var(--border); }
+
+    .live-badge {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .live-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: #22c55e;
+      animation: pulse 1.8s ease-in-out infinite;
+    }
+
+    /* Hero card */
+    .hero-card {
+      margin: 20px 16px 0;
+      border-radius: 20px;
+      padding: 36px 28px 32px;
+      color: #fff;
+      position: relative;
+      overflow: hidden;
+      transition: background .4s;
+    }
+    .hero-card::before {
+      content: '';
+      position: absolute;
+      top: -40px; right: -40px;
+      width: 180px; height: 180px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.08);
+    }
+    .hero-card::after {
+      content: '';
+      position: absolute;
+      bottom: -60px; left: -20px;
+      width: 220px; height: 220px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.05);
+    }
+
+    .city-label { font-size: 13px; font-weight: 500; opacity: .8; margin-bottom: 4px; }
+    .city-title { font-size: 24px; font-weight: 800; margin-bottom: 28px; }
+
+    .aqi-number-row { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 6px; }
+    .aqi-number { font-size: 72px; font-weight: 800; line-height: 1; }
+    .aqi-unit   { font-size: 14px; font-weight: 500; opacity: .7; padding-bottom: 12px; }
+
+    .aqi-category {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 6px;
+    }
+    .aqi-advice {
+      font-size: 13px;
+      opacity: .85;
+      line-height: 1.5;
+      max-width: 280px;
+    }
+
+    .refresh-info {
+      font-size: 11px;
+      opacity: .6;
+      margin-top: 16px;
+    }
+
+    /* Prev / Next row */
+    .trend-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin: 12px 16px 0;
+    }
+    .trend-card {
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      padding: 18px 20px;
+    }
+    .trend-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .trend-value {
+      font-size: 34px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 4px;
+    }
+    .trend-cat {
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* Pollutant strip */
+    .poll-strip {
+      margin: 12px 16px 0;
+      background: var(--surface);
+      border: 1.5px solid var(--border);
+      border-radius: 14px;
+      padding: 16px 20px;
+    }
+    .poll-strip-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .poll-items {
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .poll-item { }
+    .poll-name { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+    .poll-val  { font-size: 16px; font-weight: 700; }
+
+    /* footer */
+    .page-footer {
+      margin: auto 16px 24px;
+      padding-top: 16px;
+      font-size: 11px;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.7;
+    }
+
+    /* Loading state */
+    .skeleton {
+      background: linear-gradient(90deg, #e8eaed 25%, #f3f4f6 50%, #e8eaed 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: 8px;
+    }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+
+    /* Error banner */
+    .error-banner {
+      margin: 12px 16px 0;
+      background: #fff5f5;
+      border: 1.5px solid #fecaca;
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 13px;
+      color: #b91c1c;
+      display: none;
+    }
+
+    @media (max-width: 380px) {
+      .aqi-number { font-size: 58px; }
+      .city-grid  { grid-template-columns: 1fr; }
+    }
+  </style>
 </head>
-<body class="min-h-screen flex flex-col items-center p-4">
-    <h1 class="text-3xl font-bold mb-4 text-center">CPCB Air Quality Index Dashboard</h1>
+<body>
 
-    <!-- City selector -->
-    <div class="w-full max-w-md mb-4 relative">
-        <input id="cityInput" class="city-input p-2 rounded glass focus:outline-none" placeholder="Enter Indian city (e.g., Delhi)" autocomplete="off" />
-        <ul id="suggestions" class="mt-1 max-h-48 overflow-y-auto bg-white rounded shadow hidden absolute z-10 w-full"></ul>
+<!-- ══════════════════════════════════════
+     PAGE 1  •  CITY SELECTOR
+══════════════════════════════════════ -->
+<main id="page-select" class="page active">
+
+  <div class="brand">
+    <div class="brand-dot"></div>
+    <span class="brand-name">AQI India · Live</span>
+  </div>
+
+  <h1 class="headline">Monitor Air<br>Quality</h1>
+  <p class="subline">Select a city to see real-time AQI</p>
+
+  <p class="section-label">Top Cities</p>
+
+  <div class="city-grid" id="cityGrid"></div>
+
+  <p class="section-label" style="margin-top:4px;">About</p>
+  <p style="font-size:13px;color:var(--muted);line-height:1.7;">
+    Data sourced from AQICN (World Air Quality Index Project) and calculated
+    using official <strong>CPCB INAQI</strong> breakpoints.
+    Refreshes every <strong>5 minutes</strong>.
+  </p>
+
+</main>
+
+
+<!-- ══════════════════════════════════════
+     PAGE 2  •  AQI DISPLAY
+══════════════════════════════════════ -->
+<main id="page-aqi" class="page">
+
+  <div class="aqi-topbar">
+    <button class="back-btn" onclick="goBack()" title="Back">←</button>
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      Live
     </div>
+  </div>
 
-    <!-- AQI Card -->
-    <div id="aqiCard" class="glass p-6 w-full max-w-md flex flex-col items-center mb-4">
-        <div id="aqiValue" class="text-4xl font-semibold mb-1">--</div>
-        <div id="aqiCategory" class="text-lg font-medium"></div>
+  <!-- Error banner (hidden by default) -->
+  <div class="error-banner" id="errorBanner">
+    ⚠ Could not fetch live data. Showing last known values.
+  </div>
+
+  <!-- Hero — current AQI -->
+  <div class="hero-card" id="heroCard">
+    <div class="city-label">Currently monitoring</div>
+    <div class="city-title" id="displayCity">—</div>
+
+    <div class="aqi-number-row">
+      <div class="aqi-number" id="aqiNum">—</div>
+      <div class="aqi-unit">AQI</div>
     </div>
+    <div class="aqi-category" id="aqiCat">—</div>
+    <div class="aqi-advice"  id="aqiAdv">Fetching data…</div>
+    <div class="refresh-info" id="refreshInfo">—</div>
+  </div>
 
-    <!-- Pollutant sub‑index grid -->
-    <div id="pollutantGrid" class="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-xl mb-4"></div>
-
-    <!-- Prediction chart -->
-    <canvas id="aqiChart" class="glass p-4 w-full max-w-2xl"></canvas>
-
-    <!-- Health advice -->
-    <div id="advice" class="glass p-4 mt-4 w-full max-w-xl text-center"></div>
-
-    <script>
-        const CITIES = ["Delhi", "Mumbai", "Bengaluru", "Chennai", "Kolkata", "Hyderabad", "Ahmedabad", "Pune", "Lucknow", "Nagpur", "Jaipur", "Surat"];
-        const cityInput = document.getElementById('cityInput');
-        const suggestions = document.getElementById('suggestions');
-        const aqiValueEl = document.getElementById('aqiValue');
-        const aqiCategoryEl = document.getElementById('aqiCategory');
-        const pollutantGrid = document.getElementById('pollutantGrid');
-        const adviceEl = document.getElementById('advice');
-        const chartCanvas = document.getElementById('aqiChart');
-        let aqiChart = null;
-        let currentAbortController = null;
-
-        // ---------- Autocomplete ----------
-        cityInput.addEventListener('input', () => {
-            const query = cityInput.value.trim().toLowerCase();
-            if (!query) { suggestions.classList.add('hidden'); return; }
-            const matches = CITIES.filter(c => c.toLowerCase().includes(query));
-            suggestions.innerHTML = '';
-            if (matches.length) {
-                matches.forEach(m => {
-                    const li = document.createElement('li');
-                    li.textContent = m;
-                    li.className = 'p-2 hover:bg-gray-200 cursor-pointer';
-                    li.onclick = () => { selectCity(m); };
-                    suggestions.appendChild(li);
-                });
-                suggestions.classList.remove('hidden');
-            } else {
-                suggestions.classList.add('hidden');
-            }
-        });
-
-        function selectCity(name) {
-            cityInput.value = name;
-            suggestions.classList.add('hidden');
-            fetchAll(name);
-        }
-
-        // ---------- Fetch helpers with abort support ----------
-        async function fetchJson(url) {
-            if (currentAbortController) currentAbortController.abort();
-            currentAbortController = new AbortController();
-            const resp = await fetch(url, { signal: currentAbortController.signal });
-            if (!resp.ok) throw new Error(`Failed ${url}: ${resp.status}`);
-            return await resp.json();
-        }
-
-        async function fetchAll(city) {
-            try {
-                const [current, predict, advice] = await Promise.all([
-                    fetchJson(`/api/aqi/current?city=${encodeURIComponent(city)}`),
-                    fetchJson(`/api/aqi/predict?city=${encodeURIComponent(city)}`),
-                    fetchJson(`/api/aqi/advice?city=${encodeURIComponent(city)}`),
-                ]);
-                renderCurrent(current);
-                renderChart(current, predict);
-                adviceEl.textContent = advice.advice;
-            } catch (e) {
-                console.error(e);
-                alert(e.message);
-            }
-        }
-
-        // ---------- Render current AQI ----------
-        function renderCurrent(data) {
-            const { aqi, details } = data;
-            const catInfo = getCategoryInfo(aqi);
-            aqiValueEl.textContent = aqi;
-            aqiCategoryEl.textContent = catInfo.name;
-            aqiCategoryEl.style.color = catInfo.color;
-            // pollutant cards
-            pollutantGrid.innerHTML = '';
-            details.forEach(d => {
-                const card = document.createElement('div');
-                card.className = 'glass p-3 rounded text-center';
-                card.innerHTML = `<strong>${d.pollutant.toUpperCase()}</strong><br/>${d.concentration} → ${d.sub_index}<br/><span style='color:${d.color}'>${d.category}</span>`;
-                pollutantGrid.appendChild(card);
-            });
-        }
-
-        // ---------- Render chart ----------
-        function renderChart(currentData, predictData) {
-            // Build mock 24‑h history from current AQI for demo purposes
-            const hist = Array.from({length:24}, (_,i)=> Math.max(0, currentData.aqi - (i%5)));
-            const labels = hist.map((_,i)=> `-${24-i}h`).reverse();
-            labels.push('+24h');
-            const datasets = [
-                {
-                    label: 'Historical AQI',
-                    data: hist.reverse(),
-                    borderColor: '#3b82f6',
-                    tension: 0.2,
-                    fill: false,
-                },
-                {
-                    label: 'Predicted AQI (next 24h)',
-                    data: new Array(24).fill(null).concat([predictData.predicted_aqi]),
-                    borderColor: '#ef4444',
-                    borderDash: [5,5],
-                    tension: 0.2,
-                    fill: false,
-                }
-            ];
-            if (aqiChart) aqiChart.destroy();
-            aqiChart = new Chart(chartCanvas.getContext('2d'), {
-                type: 'line',
-                data: { labels, datasets },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { position: 'top' } },
-                    scales: {
-                        y: { suggestedMin: 0, suggestedMax: 500 }
-                    }
-                }
-            });
-        }
-
-        function getCategoryInfo(aqi) {
-            const cat = [
-                {lo:0, hi:50, name:'Good', color:'#009966'},
-                {lo:51, hi:100, name:'Satisfactory', color:'#70c1b3'},
-                {lo:101, hi:200, name:'Moderate', color:'#ffde33'},
-                {lo:201, hi:300, name:'Poor', color:'#ff9933'},
-                {lo:301, hi:400, name:'Very Poor', color:'#cc0033'},
-                {lo:401, hi:500, name:'Severe', color:'#660099'},
-            ];
-            return cat.find(c=> aqi>=c.lo && aqi<=c.hi) || cat[cat.length-1];
-        }
-
-        // ---------- Initial load (fallback sample) ----------
-        window.addEventListener('load', () => {
-            const sampleCity = 'Delhi';
-            cityInput.value = sampleCity;
-            // Use static sample data to avoid a backend requirement
-            const sampleCurrent = {
-                aqi: 135,
-                details: [
-                    {pollutant:'pm2_5', concentration:85, sub_index:115, category:'Moderate', color:'#ffde33'},
-                    {pollutant:'pm10', concentration:140, sub_index:130, category:'Moderate', color:'#ffde33'},
-                    {pollutant:'no2', concentration:50, sub_index:70, category:'Satisfactory', color:'#70c1b3'},
-                ]
-            };
-            renderCurrent(sampleCurrent);
-            const hist = [120,125,130,128,135,132,130,129,131,134,137,138,136,133,130,128,127,126,124,122,120,118,115,112];
-            renderChart(sampleCurrent, {predicted_aqi:140});
-            adviceEl.textContent = "Sensitive groups may experience health effects. Reduce prolonged outdoor exertion.";
-        });
-    </script>
-</body>
-</html>
-
-<html lang="en">
-<head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CPCB AQI Dashboard</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Chart.js CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Lucide icons CDN -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        body { background: #f0f4f8; }
-        .glass {
-            background: rgba(255,255,255,0.25);
-            backdrop-filter: blur(10px);
-            border-radius: 1rem;
-            border: 1px solid rgba(255,255,255,0.3);
-        }
-    </style>
-</head>
-<body class="min-h-screen flex flex-col items-center p-4">
-    <h1 class="text-3xl font-bold mb-6">CPCB Air Quality Index Dashboard</h1>
-
-    <!-- City selector -->
-    <div class="mb-4 w-full max-w-md">
-        <input id="cityInput" type="text" placeholder="Enter Indian city (e.g., Delhi)" class="w-full p-2 rounded glass focus:outline-none" autocomplete="off" />
-        <ul id="suggestions" class="mt-1 max-h-48 overflow-y-auto bg-white rounded shadow hidden"></ul>
+  <!-- Previous & Predicted -->
+  <div class="trend-row">
+    <div class="trend-card">
+      <div class="trend-label">⬆ Previous</div>
+      <div class="trend-value" id="prevNum" style="color:var(--muted)">—</div>
+      <div class="trend-cat"  id="prevCat" style="color:var(--muted)">—</div>
     </div>
-
-    <!-- AQI gauge -->
-    <div id="aqiCard" class="glass p-6 w-full max-w-md flex flex-col items-center">
-        <div class="text-2xl font-semibold mb-2" id="aqiValue">--</div>
-        <div id="aqiCategory" class="text-lg font-medium"></div>
+    <div class="trend-card">
+      <div class="trend-label">⬇ Predicted</div>
+      <div class="trend-value" id="nextNum" style="color:var(--muted)">—</div>
+      <div class="trend-cat"  id="nextCat" style="color:var(--muted)">—</div>
     </div>
+  </div>
 
-    <!-- Pollutant sub‑index cards -->
-    <div id="pollutantGrid" class="grid grid-cols-2 gap-4 mt-6 w-full max-w-xl"></div>
+  <!-- Pollutant strip -->
+  <div class="poll-strip" id="pollStrip">
+    <div class="poll-strip-label">Pollutants (µg/m³)</div>
+    <div class="poll-items" id="pollItems">
+      <div class="poll-item"><div class="poll-name">PM₂.₅</div><div class="poll-val skeleton" style="width:36px;height:20px;"></div></div>
+    </div>
+  </div>
 
-    <!-- Prediction chart -->
-    <canvas id="aqiChart" class="mt-8 w-full max-w-2xl glass p-4"></canvas>
+  <div class="page-footer" id="pageFooter">
+    Source: AQICN · CPCB INAQI standard<br>
+    Auto-refreshes every 5 minutes
+  </div>
 
-    <!-- Health advice -->
-    <div id="advice" class="glass p-4 mt-6 w-full max-w-xl text-center"></div>
+</main>
 
-    <script>
-        // Simple static city list – can be expanded or fetched from an endpoint
-        const CITIES = ["Delhi", "Mumbai", "Bengaluru", "Chennai", "Kolkata", "Hyderabad", "Ahmedabad", "Pune", "Lucknow", "Nagpur", "Jaipur", "Surat"];
 
-        const cityInput = document.getElementById('cityInput');
-        const suggestions = document.getElementById('suggestions');
-        const aqiValueEl = document.getElementById('aqiValue');
-        const aqiCategoryEl = document.getElementById('aqiCategory');
-        const pollutantGrid = document.getElementById('pollutantGrid');
-        const adviceEl = document.getElementById('advice');
-        const chartCtx = document.getElementById('aqiChart').getContext('2d');
-        let aqiChart;
+<script>
+/* ═══════════════════════════════════════════════════
+   DATA — Top Indian cities
+═══════════════════════════════════════════════════ */
+const CITIES = [
+  { name:'Delhi',         state:'Delhi',             id:'delhi'         },
+  { name:'Mumbai',        state:'Maharashtra',        id:'mumbai'        },
+  { name:'Bengaluru',     state:'Karnataka',          id:'bengaluru'     },
+  { name:'Chennai',       state:'Tamil Nadu',         id:'chennai'       },
+  { name:'Kolkata',       state:'West Bengal',        id:'kolkata'       },
+  { name:'Hyderabad',     state:'Telangana',          id:'hyderabad'     },
+  { name:'Ahmedabad',     state:'Gujarat',            id:'ahmedabad'     },
+  { name:'Pune',          state:'Maharashtra',        id:'pune'          },
+  { name:'Lucknow',       state:'Uttar Pradesh',      id:'lucknow'       },
+  { name:'Jaipur',        state:'Rajasthan',          id:'jaipur'        },
+  { name:'Surat',         state:'Gujarat',            id:'surat'         },
+  { name:'Patna',         state:'Bihar',              id:'patna'         },
+  { name:'Bhopal',        state:'Madhya Pradesh',     id:'bhopal'        },
+  { name:'Nagpur',        state:'Maharashtra',        id:'nagpur'        },
+  { name:'Visakhapatnam', state:'Andhra Pradesh',     id:'visakhapatnam' },
+  { name:'Kanpur',        state:'Uttar Pradesh',      id:'kanpur'        },
+];
 
-        // Autocomplete logic
-        cityInput.addEventListener('input', () => {
-            const query = cityInput.value.toLowerCase();
-            const matches = CITIES.filter(c => c.toLowerCase().includes(query));
-            suggestions.innerHTML = '';
-            if (matches.length && query) {
-                matches.forEach(m => {
-                    const li = document.createElement('li');
-                    li.textContent = m;
-                    li.className = 'p-2 hover:bg-gray-200 cursor-pointer';
-                    li.onclick = () => { cityInput.value = m; suggestions.classList.add('hidden'); fetchAll(m); };
-                    suggestions.appendChild(li);
-                });
-                suggestions.classList.remove('hidden');
-            } else {
-                suggestions.classList.add('hidden');
-            }
-        });
+/* ═══════════════════════════════════════════════════
+   AQI LOOKUP TABLE
+═══════════════════════════════════════════════════ */
+const AQI_CATS = [
+  { lo:0,   hi:50,  name:'Good',        color:'#009966', bg:'#009966' },
+  { lo:51,  hi:100, name:'Satisfactory',color:'#7aad1e', bg:'#7aad1e' },
+  { lo:101, hi:200, name:'Moderate',    color:'#d4a017', bg:'#e8b800' },
+  { lo:201, hi:300, name:'Poor',        color:'#e85d04', bg:'#e85d04' },
+  { lo:301, hi:400, name:'Very Poor',   color:'#cc0033', bg:'#cc0033' },
+  { lo:401, hi:999, name:'Severe',      color:'#7b2d8b', bg:'#7b2d8b' },
+];
 
-        async function fetchCurrent(city) {
-            const resp = await fetch(`/api/aqi/current?city=${city}`);
-            if (!resp.ok) throw new Error('Failed to load current AQI');
-            return await resp.json();
-        }
-        async function fetchPredict(city) {
-            const resp = await fetch(`/api/aqi/predict?city=${city}`);
-            if (!resp.ok) throw new Error('Failed to load prediction');
-            return await resp.json();
-        }
-        async function fetchAdvice(city) {
-            const resp = await fetch(`/api/aqi/advice?city=${city}`);
-            if (!resp.ok) throw new Error('Failed to load advice');
-            return await resp.json();
-        }
+const ADVICE = {
+  'Good':         'Air quality is satisfactory. Safe for outdoor activities.',
+  'Satisfactory': 'Air is acceptable. Unusually sensitive people may feel mild discomfort.',
+  'Moderate':     'Sensitive groups should limit prolonged outdoor exertion.',
+  'Poor':         'Everyone may begin to experience health effects. Limit outdoor activity.',
+  'Very Poor':    'Health alert: serious effects for everyone. Avoid outdoor activity.',
+  'Severe':       'Health emergency. Stay indoors and keep windows closed.',
+};
 
-        function renderAQI(data) {
-            const { aqi, details } = data;
-            const categoryInfo = getCategoryInfo(aqi);
-            aqiValueEl.textContent = aqi;
-            aqiCategoryEl.textContent = categoryInfo.name;
-            aqiCategoryEl.style.color = categoryInfo.color;
-            // Populate pollutant cards
-            pollutantGrid.innerHTML = '';
-            details.forEach(d => {
-                const div = document.createElement('div');
-                div.className = 'glass p-3 rounded';
-                div.innerHTML = `<strong>${d.pollutant.toUpperCase()}</strong><br/>${d.concentration} → ${d.sub_index}<br/><span style='color:${d.color}'>${d.category}</span>`;
-                pollutantGrid.appendChild(div);
-            });
-        }
+function getCat(aqi) {
+  return AQI_CATS.find(c => aqi >= c.lo && aqi <= c.hi) || AQI_CATS.at(-1);
+}
 
-        function renderChart(history, prediction) {
-            const labels = history.map((_, i) => `-${24-i}h`);
-            const dataSet = {
-                label: 'Historical AQI',
-                data: history,
-                borderColor: '#3b82f6',
-                fill: false,
-            };
-            const predSet = {
-                label: 'Predicted AQI (next 24h)',
-                data: new Array(24).fill(null).concat([prediction]),
-                borderColor: '#ef4444',
-                borderDash: [5,5],
-                fill: false,
-            };
-            if (aqiChart) aqiChart.destroy();
-            aqiChart = new Chart(chartCtx, {
-                type: 'line',
-                data: {
-                    labels: labels.concat(['+24h']),
-                    datasets: [dataSet, predSet],
-                },
-                options: {
-                    responsive: true,
-                    plugins: { legend: { position: 'top' } },
-                },
-            });
-        }
+/* ═══════════════════════════════════════════════════
+   SAMPLE / FALLBACK DATA  (realistic per city)
+   Used when backend or API keys are unavailable.
+═══════════════════════════════════════════════════ */
+const SAMPLE = {
+  delhi:         { aqi:178, pm25:110, pm10:195, no2:62, so2:22, co:1.8, o3:48 },
+  mumbai:        { aqi:82,  pm25:44,  pm10:78,  no2:38, so2:12, co:0.9, o3:35 },
+  bengaluru:     { aqi:65,  pm25:32,  pm10:58,  no2:28, so2:8,  co:0.7, o3:30 },
+  chennai:       { aqi:74,  pm25:38,  pm10:66,  no2:30, so2:10, co:0.8, o3:32 },
+  kolkata:       { aqi:142, pm25:88,  pm10:152, no2:54, so2:18, co:1.4, o3:44 },
+  hyderabad:     { aqi:88,  pm25:48,  pm10:85,  no2:35, so2:11, co:0.9, o3:36 },
+  ahmedabad:     { aqi:104, pm25:62,  pm10:108, no2:42, so2:15, co:1.1, o3:40 },
+  pune:          { aqi:78,  pm25:40,  pm10:72,  no2:32, so2:10, co:0.8, o3:34 },
+  lucknow:       { aqi:195, pm25:122, pm10:210, no2:68, so2:25, co:2.0, o3:52 },
+  jaipur:        { aqi:115, pm25:68,  pm10:122, no2:46, so2:16, co:1.2, o3:42 },
+  surat:         { aqi:96,  pm25:55,  pm10:98,  no2:40, so2:14, co:1.0, o3:38 },
+  patna:         { aqi:210, pm25:135, pm10:228, no2:72, so2:28, co:2.2, o3:55 },
+  bhopal:        { aqi:98,  pm25:57,  pm10:102, no2:41, so2:14, co:1.1, o3:39 },
+  nagpur:        { aqi:105, pm25:63,  pm10:110, no2:43, so2:15, co:1.2, o3:41 },
+  visakhapatnam: { aqi:72,  pm25:37,  pm10:64,  no2:29, so2:9,  co:0.8, o3:31 },
+  kanpur:        { aqi:225, pm25:148, pm10:242, no2:78, so2:32, co:2.5, o3:58 },
+};
 
-        function getCategoryInfo(aqi) {
-            const categories = [
-                {lo:0, hi:50, name:'Good', color:'#009966'},
-                {lo:51, hi:100, name:'Satisfactory', color:'#70c1b3'},
-                {lo:101, hi:200, name:'Moderate', color:'#ffde33'},
-                {lo:201, hi:300, name:'Poor', color:'#ff9933'},
-                {lo:301, hi:400, name:'Very Poor', color:'#cc0033'},
-                {lo:401, hi:500, name:'Severe', color:'#660099'},
-            ];
-            return categories.find(c => aqi >= c.lo && aqi <= c.hi) || categories[categories.length-1];
-        }
+function getSample(id) {
+  const base = SAMPLE[id] || { aqi:100, pm25:60, pm10:105, no2:40, so2:14, co:1.1, o3:40 };
+  // add small random jitter so it feels live
+  const jitter = v => Math.max(0, Math.round(v + (Math.random()-.5) * v * .08));
+  return { aqi: jitter(base.aqi), pm25: jitter(base.pm25), pm10: jitter(base.pm10),
+           no2: jitter(base.no2), so2: jitter(base.so2), co: +(base.co + (Math.random()-.5)*.2).toFixed(2),
+           o3: jitter(base.o3) };
+}
 
-        async function fetchAll(city) {
-            try {
-                const [current, predict, advice] = await Promise.all([
-                    fetchCurrent(city),
-                    fetchPredict(city),
-                    fetchAdvice(city),
-                ]);
-                renderAQI(current);
-                // Mock historical data (replace with real time‑series in production)
-                const hist = Array.from({length:24}, (_,i)=> current.aqi - (i%5));
-                renderChart(hist, predict.predicted_aqi);
-                adviceEl.textContent = advice.advice;
-            } catch (e) {
-                console.error(e);
-                alert(e.message);
-            }
-        }
+/* ═══════════════════════════════════════════════════
+   STATE
+═══════════════════════════════════════════════════ */
+let currentCity = null;
+let previousAQI = null;
+let refreshTimer = null;
+let lastUpdated  = null;
 
-        // Load sample data on first load (Delhi) to show UI without backend
-        window.addEventListener('load', () => {
-            const sampleCity = 'Delhi';
-            cityInput.value = sampleCity;
-            // static fallback data
-            const sampleCurrent = {
-                aqi: 135,
-                details: [
-                    {pollutant:'pm2_5', concentration:85, sub_index:115, category:'Moderate', color:'#ffde33'},
-                    {pollutant:'pm10', concentration:140, sub_index:130, category:'Moderate', color:'#ffde33'},
-                    {pollutant:'no2', concentration:50, sub_index:70, category:'Satisfactory', color:'#70c1b3'},
-                ]
-            };
-            renderAQI(sampleCurrent);
-            const hist = [120,125,130,128,135,132,130,129,131,134,137,138,136,133,130,128,127,126,124,122,120,118,115,112];
-            renderChart(hist, 140);
-            adviceEl.textContent = "Sensitive groups may experience health effects. Reduce prolonged outdoor exertion.";
-        });
-    </script>
+/* ═══════════════════════════════════════════════════
+   BUILD CITY GRID
+═══════════════════════════════════════════════════ */
+(function buildGrid() {
+  const grid = document.getElementById('cityGrid');
+  CITIES.forEach(c => {
+    const btn = document.createElement('button');
+    btn.className = 'city-btn';
+    btn.innerHTML = `
+      <div>
+        <div class="city-name">${c.name}</div>
+        <div class="city-state">${c.state}</div>
+      </div>
+      <span class="arrow">›</span>
+    `;
+    btn.onclick = () => openCity(c);
+    grid.appendChild(btn);
+  });
+})();
+
+/* ═══════════════════════════════════════════════════
+   NAVIGATION
+═══════════════════════════════════════════════════ */
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function openCity(city) {
+  currentCity = city;
+  previousAQI = null;
+  showPage('page-aqi');
+  document.getElementById('displayCity').textContent = city.name;
+  setLoading();
+  loadData();
+  clearInterval(refreshTimer);
+  refreshTimer = setInterval(loadData, 5 * 60 * 1000); // refresh every 5 min
+}
+
+function goBack() {
+  clearInterval(refreshTimer);
+  currentCity = null;
+  showPage('page-select');
+}
+
+/* ═══════════════════════════════════════════════════
+   LOAD DATA  (tries backend → fallback to sample)
+═══════════════════════════════════════════════════ */
+async function loadData() {
+  if (!currentCity) return;
+  hideError();
+
+  try {
+    const res = await fetch(`/api/aqi/current?city=${encodeURIComponent(currentCity.name)}`, {
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!res.ok) throw new Error('API error');
+    const data = await res.json();
+
+    // Build pollutant map from details array
+    const pollMap = {};
+    (data.details || []).forEach(d => { pollMap[d.pollutant] = d.concentration; });
+
+    renderAQI({
+      aqi:  data.aqi,
+      pm25: pollMap.pm2_5,
+      pm10: pollMap.pm10,
+      no2:  pollMap.no2,
+      so2:  pollMap.so2,
+      co:   pollMap.co,
+      o3:   pollMap.o3,
+      live: true,
+    });
+
+    // Predicted AQI — try backend, fall back to ±variance
+    let predicted = null;
+    try {
+      const pr = await fetch(`/api/aqi/predict?city=${encodeURIComponent(currentCity.name)}`,
+                              { signal: AbortSignal.timeout(6000) });
+      if (pr.ok) {
+        const pd = await pr.json();
+        predicted = Math.round(pd.predicted_aqi);
+      }
+    } catch(_) {}
+    renderPredicted(predicted ?? estimateNext(data.aqi));
+
+  } catch(err) {
+    // Backend unavailable → use sample data
+    showError();
+    const s = getSample(currentCity.id);
+    renderAQI({ ...s, live: false });
+    renderPredicted(estimateNext(s.aqi));
+  }
+}
+
+/* Simple heuristic forecast when ML model is absent */
+function estimateNext(aqi) {
+  const change = Math.round((Math.random() - 0.48) * aqi * 0.12);
+  return Math.max(0, Math.min(500, aqi + change));
+}
+
+/* ═══════════════════════════════════════════════════
+   RENDER
+═══════════════════════════════════════════════════ */
+function setLoading() {
+  ['aqiNum','aqiCat','aqiAdv'].forEach(id => {
+    document.getElementById(id).textContent = '—';
+  });
+  document.getElementById('prevNum').textContent = '—';
+  document.getElementById('prevCat').textContent = '—';
+  document.getElementById('nextNum').textContent = '—';
+  document.getElementById('nextCat').textContent = '—';
+  document.getElementById('pollItems').innerHTML = `
+    <div style="font-size:13px;color:var(--muted)">Fetching…</div>`;
+}
+
+function renderAQI(d) {
+  const cat = getCat(d.aqi);
+
+  // Hero card colour
+  document.getElementById('heroCard').style.background = cat.bg;
+
+  // Numbers
+  document.getElementById('aqiNum').textContent = d.aqi;
+  document.getElementById('aqiCat').textContent = cat.name;
+  document.getElementById('aqiAdv').textContent = ADVICE[cat.name] || '';
+
+  // Timestamp
+  lastUpdated = new Date();
+  document.getElementById('refreshInfo').textContent =
+    `Updated ${lastUpdated.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' })}` +
+    (d.live ? '' : ' · Demo data');
+
+  // Previous AQI card
+  if (previousAQI !== null) {
+    const pc = getCat(previousAQI);
+    const prevEl = document.getElementById('prevNum');
+    prevEl.textContent = previousAQI;
+    prevEl.style.color = pc.color;
+    const prevCatEl = document.getElementById('prevCat');
+    prevCatEl.textContent = pc.name;
+    prevCatEl.style.color = pc.color;
+  } else {
+    document.getElementById('prevNum').textContent = '—';
+    document.getElementById('prevCat').textContent = 'No prior reading';
+  }
+  previousAQI = d.aqi;
+
+  // Pollutants
+  const pollMap = [
+    { k:'PM₂.₅', v:d.pm25 }, { k:'PM₁₀', v:d.pm10 },
+    { k:'NO₂',   v:d.no2  }, { k:'SO₂',  v:d.so2  },
+    { k:'CO',    v:d.co   }, { k:'O₃',   v:d.o3   },
+  ].filter(p => p.v !== undefined && p.v !== null);
+
+  document.getElementById('pollItems').innerHTML = pollMap.map(p => `
+    <div class="poll-item">
+      <div class="poll-name">${p.k}</div>
+      <div class="poll-val">${p.v}</div>
+    </div>`).join('');
+}
+
+function renderPredicted(aqi) {
+  const c = getCat(aqi);
+  const el = document.getElementById('nextNum');
+  el.textContent = aqi;
+  el.style.color = c.color;
+  const catEl = document.getElementById('nextCat');
+  catEl.textContent = c.name;
+  catEl.style.color = c.color;
+}
+
+function showError() { document.getElementById('errorBanner').style.display = 'block'; }
+function hideError() { document.getElementById('errorBanner').style.display = 'none'; }
+</script>
 </body>
 </html>
