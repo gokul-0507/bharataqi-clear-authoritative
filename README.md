@@ -31,8 +31,8 @@ Live Air Quality Index (AQI) monitoring and 24-hour prediction web application f
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/gokul-0507/sample-protecjs.git
-   cd sample-protecjs
+   git clone https://github.com/gokul-0507/bharataqi-clear-authoritative.git
+   cd bharataqi-clear-authoritative
    ```
 
 2. **Install dependencies:**
