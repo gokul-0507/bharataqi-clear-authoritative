@@ -77,10 +77,10 @@ BREAKPOINTS = {
     "o3": O3_BREAKPOINTS,
 }
 
-# CPCB AQI categories and associated colors
+# CPCB AQI categories and official colors
 AQI_CATEGORIES = [
     (0, 50, "Good", "#009966"),
-    (51, 100, "Satisfactory", "#70c1b3"),
+    (51, 100, "Satisfactory", "#9cd326"),
     (101, 200, "Moderate", "#ffde33"),
     (201, 300, "Poor", "#ff9933"),
     (301, 400, "Very Poor", "#cc0033"),
